@@ -22,7 +22,7 @@ Eigen::Matrix<typename Vector::value_type, Eigen::Dynamic, 1> STL2Vec(Vector& ve
 	return Eigen::Map<Eigen::Matrix<value_type, Eigen::Dynamic, 1> >(&vector[0], vector.size(), 1);
 }
 
-constexpr double  alpha = 5.0;//シグモイド関数のゲイン
+constexpr double  alpha = 10.0;//シグモイド関数のゲイン
 
 class LearningMethod {
 private:

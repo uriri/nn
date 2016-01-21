@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <chrono>
 
 #include "NeuralNetwork.h"
 #include "LearningMethod.h"
@@ -67,11 +68,15 @@ int main() {
 
 	string openFile = "learn_500.dat";
 
-	cout << "inout" << endl;
-	for(auto ww : neuNet.getWeightOneDim()) {
-		cout << ww << " ";
-	}
-	cout << endl;
+	ostringstream ostrs;
+	ostrs << "output/weight_" << hideSize << ".dat";
+	const auto& outFile = ostrs.str();
+
+//	cout << "inout" << endl;
+//	for(auto ww : neuNet.getWeightOneDim()) {
+//		cout << ww << " ";
+//	}
+//	cout << endl;
 
 #ifdef LEARNING
 	ifs.open(openFile.c_str(), ios::binary);
@@ -81,24 +86,30 @@ int main() {
 		return -1;
 	}
 
+	ofstream plot("plot.csv");
+
+	chrono::system_clock::time_point start, end;
+	start = chrono::system_clock::now();
+
 	for (int i = 0; i < learningTimes; ++i) {
 		//ファイルの最後までループ
 		VectorXd lossGrad = VectorXd::Zero(wSize);
 		double lossValue;
+		double totalLoss = 0.0;
 		while (!ifs.eof()) {
 			ifs.read(reinterpret_cast<char*>(&otherMvQty), sizeof(otherMvQty));
 			DOUT << "MvQty " << otherMvQty << endl;
 			if (otherMvQty > 0) {
 
 				int input[22]; //自分の手札 + 相手の手札
-				vector<double> bestGrad(wSize), otherGrad(wSize);//NNの勾配
+				vector<double> bestGrad(wSize), otherGrad(wSize); //NNの勾配
 
 				ifs.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
 				ifs.read(reinterpret_cast<char*>(bestHandRank), sizeof(bestHandRank));
 
 				connectArray(input, myHandRank, bestHandRank);
-				DOUT << "input" << endl;
-				printArray(input);
+//				DOUT << "input" << endl;
+//				printArray(input);
 
 				neuNet.calOutPut(input);
 				bestGrad = neuNet.getGrad();
@@ -108,8 +119,8 @@ int main() {
 
 				for (int i = 0; i < otherMvQty; ++i) {
 					ifs.read(reinterpret_cast<char*>(otherHandRank), sizeof(otherHandRank));
-					connectArray(input, myHandRank, otherHandRank);
 
+					connectArray(input, myHandRank, otherHandRank);
 					neuNet.calOutPut(input);
 					otherGrad = neuNet.getGrad();
 					const double& otherValue = neuNet.getOutPut();
@@ -117,19 +128,21 @@ int main() {
 					DOUT << "otherValue " << otherValue << endl;
 
 					//勾配をここで求めて総和を計算
-					lossValue = bestValue - otherValue;
-					double loss = lm.d_LossFunc(lossValue);
-					lossGrad += (-loss * (STL2Vec(bestGrad) - STL2Vec(otherGrad)));
+					lossValue = otherValue - bestValue;
+//					cout << "loss " << lossValue << endl;
+					totalLoss += lossValue;
+					lossGrad += (lm.d_LossFunc(lossValue) * (STL2Vec(otherGrad)) - STL2Vec(bestGrad));
 				}
 //				DOUT << "totalLoss " << lossValue << endl;
 //				auto wVec = neuNet.getWeightOneDim();
 //				lm.SMD(wVec, lossGrad);
 //				neuNet.setWeight(wVec);
-			}//enf if(otherMvQty>0)
+			} //enf if(otherMvQty>0)
+		} //File end
 
-		}//File end
+		plot << i + 1 << "," << totalLoss << endl;
+		cout << i + 1 << "," << totalLoss << endl;
 
-		cout << "totalLoss " << lossValue << endl;
 		auto wVec = neuNet.getWeightOneDim();
 		lm.SMD(wVec, lossGrad);
 		neuNet.setWeight(wVec);
@@ -140,37 +153,37 @@ int main() {
 
 		ifs.clear();
 		ifs.seekg(0, ios::beg);
-		cout << i+1 << "/" << learningTimes << endl;
+//		cout << i+1 << "/" << learningTimes << endl;
 
-	}//learning loop
+	} //learning loop
 	ifs.close();
+
+	end = chrono::system_clock::now();
+
+	double elapsed = chrono::duration_cast < chrono::seconds > (end - start).count();
+	cout << elapsed << "sec" << endl;
 
 	auto aftWeight = neuNet.getWeightOneDim();
 
-	ostringstream ostrs;
-	ostrs << "output/weight_" << hideSize << ".dat";
-	const auto& outFile = ostrs.str();
 
 	ofstream ofs(outFile, ios::binary | ios::trunc);
 	ofs.write(reinterpret_cast<const char*>(&wSize), sizeof(wSize));
 	ofs.write(reinterpret_cast<char*>(&aftWeight[0]), wSize * sizeof(double));
 	ofs.close();
 
-	cout << "output" << endl;
-	for(auto ww : aftWeight) {
-		cout << ww << " ";
-	}
-	cout << endl;
+//	cout << "output" << endl;
+//	for(auto ww : aftWeight) {
+//		cout << ww << " ";
+//	}
+//	cout << endl;
 
 #endif
-	return 0;
 
 	/*
 	 * 一旦保留
 	 */
 
 	double maxMatch = -1.0;
-	int maxIndex;
 
 	openFile = "test_500.dat";
 	ifs.open(openFile.c_str(), ios::binary);
@@ -180,91 +193,86 @@ int main() {
 		return -1;
 	}
 
-	for (int i = 0; i < learningTimes; ++i) {
-		ostringstream ostrs;
-		ostrs << "output/weight_" << hideSize << "_" << i << ".dat";
-//		ostrs << "output/w_10_1.dat";
-		const auto weightFile = ostrs.str();
+	auto ww = neuNet.getWeightOneDim();
 
-		auto ww = neuNet.getWeightOneDim();
-
-		DOUT << "weight" << endl;
-		for(auto w : ww){
-			DOUT << w << " ";
-		}
-		DOUT << endl;
-
-		cout << weightFile << endl;
-		neuNet.readWeightFile(weightFile, wSize);
-
-		auto aftw = neuNet.getWeightOneDim();
-		DOUT << "read aft weight" << endl;
-		for (auto w : aftw) {
-			DOUT << w << " ";
-		}
-		DOUT << endl;
-
-		int bestCount = 0;
-		int count = 0;
-
-		//ファイルの最後までループ
-		while (!ifs.eof()) {
-			ifs.read(reinterpret_cast<char*>(&otherMvQty), sizeof(otherMvQty));
-			DOUT << "MvQty " << otherMvQty << endl;
-			if (otherMvQty > 0) {
-				DOUT << "*" << endl;
-				++count;
-
-				int input[22]; //自分の手札 + 相手の手札
-				bool isBest = true;
-
-				ifs.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
-				ifs.read(reinterpret_cast<char*>(bestHandRank), sizeof(bestHandRank));
-
-				connectArray(input, myHandRank, bestHandRank);
-				neuNet.calOutPut(input);
-				const double& bestValue = neuNet.getOutPut();
-				DOUT << "bestValue  " << bestValue << endl;
-
-				for (int i = 0; i < otherMvQty; ++i) {
-					ifs.read(reinterpret_cast<char*>(otherHandRank), sizeof(otherHandRank));
-					connectArray(input, myHandRank, otherHandRank);
-
-					neuNet.calOutPut(input);
-					const double& otherValue = neuNet.getOutPut();
-					DOUT << "otherValue " << otherValue << endl;
-					if (bestValue < otherValue) {
-						isBest = false;
-					}
-				}
-
-				if (isBest) {
-					DOUT << "ok" << endl;
-					++bestCount;
-				}
-				DOUT << endl;
-			} //enf if(otherMvQty>0)
-		}
-
-		cout << "case " << i << endl;
-		cout << "best/count -> " << bestCount << "/" << count << endl;
-		auto match = (static_cast<double>(bestCount) / static_cast<double>(count)) * 100;
-		cout << match << endl;
-		if(maxMatch < match){
-			maxMatch = match;
-			maxIndex = i;
-		}
-
-		neuNet.init();
-		ifs.clear();
-		ifs.seekg(0, ios::beg);
+	DOUT << "weight" << endl;
+	for (auto w : ww) {
+		DOUT << w << " ";
 	}
+	DOUT << endl;
+
+	cout << outFile << endl;
+	neuNet.readWeightFile(outFile, wSize);
+
+	auto aftw = neuNet.getWeightOneDim();
+	DOUT << "read aft weight" << endl;
+	for (auto w : aftw) {
+		DOUT << w << " ";
+	}
+	DOUT << endl;
+
+	int bestCount = 0;
+	int count = 0;
+
+	//ファイルの最後までループ
+	while (!ifs.eof()) {
+		ifs.read(reinterpret_cast<char*>(&otherMvQty), sizeof(otherMvQty));
+		DOUT << "MvQty " << otherMvQty << endl;
+		if (otherMvQty > 0) {
+			DOUT << "*" << endl;
+			++count;
+
+			int input[22]; //自分の手札 + 相手の手札
+			bool isBest = true;
+
+			ifs.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
+			ifs.read(reinterpret_cast<char*>(bestHandRank),
+					sizeof(bestHandRank));
+
+			connectArray(input, myHandRank, bestHandRank);
+			neuNet.calOutPut(input);
+			const double& bestValue = neuNet.getOutPut();
+			DOUT << "bestValue  " << bestValue << endl;
+
+			for (int i = 0; i < otherMvQty; ++i) {
+				ifs.read(reinterpret_cast<char*>(otherHandRank),
+						sizeof(otherHandRank));
+				connectArray(input, myHandRank, otherHandRank);
+
+				neuNet.calOutPut(input);
+				const double& otherValue = neuNet.getOutPut();
+				DOUT << "otherValue " << otherValue << endl;
+				if (bestValue < otherValue) {
+					isBest = false;
+				}
+			}
+
+			if (isBest) {
+				DOUT << "ok" << endl;
+				++bestCount;
+			}
+			DOUT << endl;
+		} //enf if(otherMvQty>0)
+	}
+
+	cout << "best/count -> " << bestCount << "/" << count << endl;
+	auto match = (static_cast<double>(bestCount) / static_cast<double>(count))
+			* 100;
+	cout << match << endl;
+	if (maxMatch < match) {
+		maxMatch = match;
+	}
+
+	neuNet.init();
+	ifs.clear();
+	ifs.seekg(0, ios::beg);
 	ifs.close();
 
-	auto fileName = [](int hide, int index){
+	/*
+	auto fileName = [](int hide, int index) {
 		ostringstream ostrs;
 		ostrs << "output/weight_" << hide;
-		if(index >= 0){
+		if(index >= 0) {
 			ostrs << "_" << index;
 		}
 		ostrs << ".dat";
@@ -296,9 +304,9 @@ int main() {
 	out.write(reinterpret_cast<char*>(&ww[0]), wSize * sizeof(double));
 	out.close();
 
+*/
 	cout << endl;
 	cout << "match " << maxMatch << endl;
-	cout << "case  " << maxIndex << endl;
 
 #else
 	/*
@@ -327,9 +335,9 @@ int main() {
 		bool tmp = true;
 		for(int i=0; i<3; ++i) {
 			if( (fabs(arg[i]) < 1e-15) )
-				arg[i] = 0.0;
+			arg[i] = 0.0;
 			else
-				tmp = false;
+			tmp = false;
 		}
 		return tmp;
 	};
