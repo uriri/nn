@@ -22,7 +22,7 @@ LearningMethod::LearningMethod(const int weightSize, double learningRate) {
 
 	pVec *= learningRate;//学習率をベクトルに拡張
 
-	mu = 0.05; //meta-LearningRate
+	mu = 1e-6; //meta-LearningRate
 	lamda = 0;
 }
 
@@ -32,11 +32,6 @@ LearningMethod::~LearningMethod() {
 
 //Stochastic Meta-Descent
 void LearningMethod::SMD(std::vector<double>& oldWeight, const Eigen::VectorXd& loss) {
-
-	//Cの計算（ヘッセ行列）
-//	MatrixXd cMat;
-//	cMat = MatrixXd::Identity(wSize, wSize);
-//	cMat *= dd_LossFunc(loss);
 
 	auto diag = [&](VectorXd arg) {
 		MatrixXd unitMat(m_weightSize, m_weightSize);
@@ -60,8 +55,8 @@ void LearningMethod::SMD(std::vector<double>& oldWeight, const Eigen::VectorXd& 
 	nextWeight = STL2Vec(oldWeight);
 
 	//local learning rateの更新
-	VectorXd one = VectorXd::Ones(m_weightSize);
-	pVec = diag(pVec)*oneHalfOver( one+(mu*diag(vVec)*loss) );
+	VectorXd tmp = oneHalfOver( VectorXd::Ones(m_weightSize)+(mu*diag(vVec)*loss) );
+	pVec = diag(pVec)*tmp;
 
 	//weightの更新
 	nextWeight -= diag(pVec)*loss;

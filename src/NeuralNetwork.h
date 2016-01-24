@@ -24,7 +24,7 @@ private:
 	std::vector<double> m_hiddenLayer		;			//中間層の内部,sigmoidは通してない
 	double m_output;									//出力層の内部,sigmoidは通してない
 
-	std::vector< std::vector<double> > m_weightVecI2H;	//重みベクトル（入力->中間）
+	std::vector< std::vector<double> > m_weightVecI2H;	//重みベクトル（入力->中間）[hide][input]
 	std::vector<double> m_weightVecH2O;					//重みベクトル（中間->出力）
 	unsigned int m_weightSize;							//重みの数
 	std::random_device m_rndDevice;
@@ -163,7 +163,7 @@ public:
 		//入力->中間
 		for (int i = 0; i < m_weightVecI2H.size(); ++i) {
 			for (int j = 0; j < m_weightVecI2H[i].size(); ++j) {
-				 gradVec[i*m_weightVecI2H[0].size()+j] = d_sigmoid(m_output)*d_sigmoid(m_hiddenLayer[i])*m_input[j];
+				gradVec[i*m_weightVecI2H[0].size()+j] = d_sigmoid(m_output)*d_sigmoid(m_hiddenLayer[i])*m_input[j];
 			}
 		}
 		//中間->出力

@@ -22,7 +22,7 @@ Eigen::Matrix<typename Vector::value_type, Eigen::Dynamic, 1> STL2Vec(Vector& ve
 	return Eigen::Map<Eigen::Matrix<value_type, Eigen::Dynamic, 1> >(&vector[0], vector.size(), 1);
 }
 
-constexpr double  alpha = 10.0;//シグモイド関数のゲイン
+constexpr double  alpha = 5.0;//シグモイド関数のゲイン
 
 class LearningMethod {
 private:
@@ -41,11 +41,13 @@ public:
 
 	//損失関数、中身はシグモイド
 	double lossFunc(double arg){
-		return ( 1.0/(1.0+exp(-alpha*arg)) );
+		return ( 1.0/(1.0+exp(alpha*arg)) );
+//		return -arg>=0?-arg:0;
 	}
 
 	double d_LossFunc(double arg){
-		return ( alpha*(1.0-lossFunc(arg))*lossFunc(arg) );
+		return ( alpha*lossFunc(arg)*(1.0-lossFunc(arg)) );
+//		return  arg<=0?0:1;
 	}
 
 	double dd_LossFunc(double arg){
