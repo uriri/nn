@@ -22,7 +22,7 @@ LearningMethod::LearningMethod(const int weightSize, double learningRate) {
 
 	pVec *= learningRate;//学習率をベクトルに拡張
 
-	mu = 1e-6; //meta-LearningRate
+	mu = 0.05; //meta-LearningRate
 	lamda = 0;
 }
 

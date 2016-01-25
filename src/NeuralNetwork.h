@@ -73,7 +73,7 @@ public:
 
 	void init() {
 		std::mt19937 mt(m_rndDevice());
-		std::uniform_real_distribution<> randWeight(-1.0, 1.0);
+		std::uniform_real_distribution<> randWeight(-5.0, 5.0);
 
 		int t = 0;
 		//入力->中間
