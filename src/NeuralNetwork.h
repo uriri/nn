@@ -21,7 +21,7 @@ constexpr double alpha = 1.0; //シグモイド関数のゲイン
 class NeuralNetwork {
 private:
 	std::vector<double> m_input;
-	std::vector<double> m_hiddenLayer		;			//中間層の内部,sigmoidは通してない
+	std::vector<double> m_hiddenLayer;					//中間層の内部,sigmoidは通してない
 	double m_output;									//出力層の内部,sigmoidは通してない
 
 	std::vector< std::vector<double> > m_weightVecI2H;	//重みベクトル（入力->中間）[hide][input]
@@ -34,7 +34,7 @@ private:
 	}
 
 	double d_sigmoid(double arg) {
-		return ( alpha*(1.0 - sigmoid(arg)) * sigmoid(arg) );
+		return ( (1.0 - sigmoid(arg)) * sigmoid(arg) );
 	}
 
 	void reset() {
@@ -73,7 +73,7 @@ public:
 
 	void init() {
 		std::mt19937 mt(m_rndDevice());
-		std::uniform_real_distribution<> randWeight(-5.0, 5.0);
+		std::uniform_real_distribution<> randWeight(-1.0, 1.0);
 
 		int t = 0;
 		//入力->中間

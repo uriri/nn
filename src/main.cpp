@@ -14,8 +14,8 @@
 #include "LearningMethod.h"
 
 //#define DEBUG
-#define DEBUGL
-#define DEBUGT
+//#define DEBUGL
+//#define DEBUGT
 
 #define LEARNING
 
@@ -68,10 +68,9 @@ int main() {
 	constexpr int wSize = ((inSize + 1) * hideSize) + (hideSize + 1);
 
 	constexpr double learningRate = 0.1;
-	constexpr int learningTimes = 50;
+	constexpr int learningTimes = 100;
 
 	ifstream learnFile, testFile;
-	ofstream plot("plot.csv");
 
 	NeuralNetwork neuNet(inSize, hideSize);
 	LearningMethod lm(wSize, learningRate);
@@ -81,6 +80,7 @@ int main() {
 	int myHandRank[11];
 	int bestHandRank[11], otherHandRank[11];
 	int otherMvQty;
+	double minLossValue;
 
 	string learnFileName = "learn_500.dat";
 	string testFileName = "test_500.dat";
@@ -96,6 +96,24 @@ int main() {
 //	cout << endl;
 
 #ifdef LEARNING
+	ofstream plot;
+
+	string plotFile;
+	bool isSame = true;
+	unsigned int num = 0;
+	do{
+		ostringstream os;
+		os << "plot" << num << ".csv";
+		ifstream check(os.str().c_str());
+		if(check.fail()){
+			plotFile = os.str();
+			isSame = false;
+		}
+		++num;
+	}while(isSame);
+	cout << plotFile << endl;
+	plot.open(plotFile.c_str());
+
 	learnFile.open(learnFileName.c_str(), ios::binary);
 	testFile.open(testFileName.c_str(), ios::binary);
 
@@ -108,8 +126,6 @@ int main() {
 		cerr << "test cannot open " << endl;
 		return -1;
 	}
-
-//	ofstream plot("plot.csv");
 
 	chrono::system_clock::time_point start, end;
 	start = chrono::system_clock::now();
@@ -151,17 +167,37 @@ int main() {
 					DOUTL << "otherValue " << otherValue << endl;
 
 					//勾配をここで求めて総和を計算
-					lossValue = bestValue - otherValue;
+					lossValue = otherValue - bestValue;
 					DOUTL << "loss       " << lm.lossFunc(lossValue) << "(" << lossValue << ")" << endl;
 					totalLoss += lm.lossFunc(lossValue);
-					lossGrad += ( lm.d_LossFunc(lossValue) * (STL2Vec(bestGrad) - STL2Vec(otherGrad)) );
+					lossGrad += ( lm.d_LossFunc(lossValue) * (STL2Vec(otherGrad) - STL2Vec(bestGrad)) );
 				}
 				DOUTL << "totalLoss  " << totalLoss << endl;
 				DOUTL << endl;
 			} //enf if(otherMvQty>0)
 		} //File end
 
-		cout << i + 1 << "," << totalLoss << endl;
+//		cout << i + 1 << "," << totalLoss << endl;
+
+		if(i==0){
+			minLossValue = totalLoss;
+		} else {
+//			cout << "min " << minLossValue << endl;
+			if(totalLoss <= minLossValue){
+				minLossValue = totalLoss;
+
+				auto aftWeight = neuNet.getWeightOneDim();
+				ostringstream out;
+				out << "output/weight_" << hideSize << "_" << totalLoss << ".dat";
+
+//				cout << out.str() << endl;
+
+				ofstream ofs(out.str(), ios::binary | ios::trunc);
+				ofs.write(reinterpret_cast<const char*>(&wSize), sizeof(wSize));
+				ofs.write(reinterpret_cast<char*>(&aftWeight[0]), wSize * sizeof(double));
+				ofs.close();
+			}
+		}
 
 		auto wVec = neuNet.getWeightOneDim();
 		lm.SMD(wVec, lossGrad);
@@ -171,7 +207,7 @@ int main() {
 		 * test
 		 */
 
-		cout << "--- test ---" << endl;
+//		cout << "--- test ---" << endl;
 		int bestCount = 0;
 		int count = 0;
 
@@ -183,7 +219,7 @@ int main() {
 				++count;
 
 				int input[22]; //自分の手札 + 相手の手札
-				double totalLoss = 0.0;
+				bool isBest = true;
 
 				testFile.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
 				testFile.read(reinterpret_cast<char*>(bestHandRank), sizeof(bestHandRank));
@@ -199,12 +235,15 @@ int main() {
 
 					neuNet.calOutPut(input);
 					const double otherValue = neuNet.getOutPut();
-					totalLoss += lm.lossFunc(bestValue - otherValue);
 					DOUTT << "otherValue " << otherValue << endl;
-					DOUTT << "loss       " << lm.lossFunc(bestValue - otherValue) << endl;
+					DOUTT << "loss       " << lm.lossFunc(otherValue-bestValue) << endl;
+					if( (otherValue-bestValue) < 1e-15 ){
+						DOUTT << "- ";
+						isBest = false;
+					}
 				}
 
-				if (fabs(totalLoss) < 1e-15) {
+				if (isBest) {
 					DOUT << "ok" << endl;
 					++bestCount;
 				}
@@ -213,7 +252,7 @@ int main() {
 		}//end testFile
 
 		const auto match = (static_cast<double>(bestCount) / static_cast<double>(count)) * 100;
-		cout << bestCount << "/" << count << " " << match << "%" << endl;
+//		cout << bestCount << "/" << count << " " << match << "%" << endl;
 
 		plot << i+1 << "," << totalLoss << "," << match << endl;
 		testFile.clear();
@@ -222,7 +261,7 @@ int main() {
 		learnFile.clear();
 		learnFile.seekg(0, ios::beg);
 
-		cout << endl;
+//		cout << endl;
 
 	} //learning loop
 
@@ -234,21 +273,14 @@ int main() {
 	double elapsed = chrono::duration_cast < chrono::seconds > (end - start).count();
 	cout << endl << elapsed << "sec" << endl;
 
-	auto aftWeight = neuNet.getWeightOneDim();
-
-	cout << outFile << endl;
-	ofstream ofs(outFile, ios::binary | ios::trunc);
-	ofs.write(reinterpret_cast<const char*>(&wSize), sizeof(wSize));
-	ofs.write(reinterpret_cast<char*>(&aftWeight[0]), wSize * sizeof(double));
-	ofs.close();
-
 //	cout << "output" << endl;
 //	for(auto ww : aftWeight) {
 //		cout << ww << " ";
 //	}
 //	cout << endl;
 
-#endif
+#else
+
 
 	testFile.open(testFileName.c_str(), ios::binary);
 
@@ -257,7 +289,16 @@ int main() {
 		return -1;
 	}
 
-	neuNet.readWeightFile(outFile, wSize);
+	//損失関数の総和だけ入力すれば勝手にファイル名を生成してくれる
+	string value;
+	cout << "testFile lossValue " << endl;
+	cin >> value;
+
+	ostringstream out;
+	out << "output/weight_" << hideSize << "_" << value << ".dat";
+
+	cout << out.str() << "\n" << endl;
+	neuNet.readWeightFile(out.str(), wSize);
 
 //	auto aftw = neuNet.getWeightOneDim();
 //	cout << "read aft weight" << endl;
@@ -277,35 +318,35 @@ int main() {
 			++count;
 
 			int input[22]; //自分の手札 + 相手の手札
-			bool isBest = false;
+			bool isBest = true;
 
 			testFile.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
-			testFile.read(reinterpret_cast<char*>(bestHandRank),
-					sizeof(bestHandRank));
+			testFile.read(reinterpret_cast<char*>(bestHandRank), sizeof(bestHandRank));
 
 			connectArray(input, myHandRank, bestHandRank);
 			neuNet.calOutPut(input);
 			const double bestValue = neuNet.getOutPut();
-			DOUT << "bestValue  " << bestValue << endl;
+			DOUTT << "bestValue  " << bestValue << endl;
 
 			for (int i = 0; i < otherMvQty; ++i) {
-				testFile.read(reinterpret_cast<char*>(otherHandRank),
-						sizeof(otherHandRank));
+				testFile.read(reinterpret_cast<char*>(otherHandRank), sizeof(otherHandRank));
 				connectArray(input, myHandRank, otherHandRank);
 
 				neuNet.calOutPut(input);
 				const double otherValue = neuNet.getOutPut();
-				DOUT << "otherValue " << otherValue << endl;
-				if (bestValue > otherValue) {
-					isBest = true;
+				if( (otherValue-bestValue) < 1e-15 ){
+					DOUTT << "- ";
+					isBest = false;
 				}
+				DOUTT << "otherValue " << otherValue << endl;
+				DOUTT << "loss       " << lm.lossFunc(otherValue-bestValue) << endl;
 			}
 
 			if (isBest) {
 				DOUT << "ok" << endl;
 				++bestCount;
 			}
-			DOUT << endl;
+			DOUTT << endl;
 		} //enf if(otherMvQty>0)
 	}//end testFile
 
@@ -352,6 +393,7 @@ int main() {
 	out.close();
 
 */
+#endif
 
 #else
 	/*
