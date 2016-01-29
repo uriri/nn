@@ -41,13 +41,13 @@ public:
 
 	//損失関数、中身はシグモイド
 	double lossFunc(double arg){
-		return ( 1.0/(1.0+exp(-alpha*arg)) );
-//		return std::max(arg, 0.0);
+//		return ( 1.0/(1.0+exp(-alpha*arg)) );
+		return std::max(arg, 0.0);
 	}
 
 	double d_LossFunc(double arg){
-		return ( lossFunc(arg)*(1.0-lossFunc(arg)) );
-//		return  arg>0.0?1.0:0.0;
+//		return ( alpha*lossFunc(arg)*(1.0-lossFunc(arg)) );
+		return arg>0.0?1.0:0.0;
 	}
 
 	double dd_LossFunc(double arg){

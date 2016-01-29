@@ -42,8 +42,6 @@ void printArray(int (&arg)[size]) {
 	using namespace std;
 	for (int i = 0; i < size; ++i)
 		DOUT << arg[i] << " ";
-	if (arg[0] == 0)
-		DOUT << "*";
 	DOUT << endl;
 }
 
@@ -63,11 +61,11 @@ int main() {
 	using namespace NN;
 	using namespace Learn;
 
-	constexpr int inSize = 22;
+	constexpr int inSize = 28;
 	constexpr int hideSize = 40;
 	constexpr int wSize = ((inSize + 1) * hideSize) + (hideSize + 1);
 
-	constexpr double learningRate = 0.1;
+	constexpr double learningRate = 0.05;
 	constexpr int learningTimes = 100;
 
 	ifstream learnFile, testFile;
@@ -77,8 +75,8 @@ int main() {
 
 #if 1
 
-	int myHandRank[11];
-	int bestHandRank[11], otherHandRank[11];
+	int myHandRank[14];
+	int bestHandRank[14], otherHandRank[14];
 	int otherMvQty;
 	double minLossValue;
 
@@ -121,12 +119,12 @@ int main() {
 		cerr << "learn cannot open" << endl;
 		return -1;
 	}
-
+/*
 	if(testFile.fail()) {
 		cerr << "test cannot open " << endl;
 		return -1;
 	}
-
+*/
 	chrono::system_clock::time_point start, end;
 	start = chrono::system_clock::now();
 
@@ -140,7 +138,7 @@ int main() {
 			if (otherMvQty > 0) {
 				DOUTL << "MvQty " << otherMvQty << endl;
 
-				int input[22]; //自分の手札 + 相手の手札
+				int input[28]; //自分の手札 + 相手の手札
 				vector<double> bestGrad(wSize), otherGrad(wSize); //NNの勾配
 
 				learnFile.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
@@ -168,7 +166,7 @@ int main() {
 
 					//勾配をここで求めて総和を計算
 					lossValue = otherValue - bestValue;
-					DOUTL << "loss       " << lm.lossFunc(lossValue) << "(" << lossValue << ")" << endl;
+					DOUTL << "loss       " << lm.lossFunc(lossValue) << "(" << lossValue << ") " << lm.d_LossFunc(lossValue) << endl;
 					totalLoss += lm.lossFunc(lossValue);
 					lossGrad += ( lm.d_LossFunc(lossValue) * (STL2Vec(otherGrad) - STL2Vec(bestGrad)) );
 				}
@@ -177,7 +175,7 @@ int main() {
 			} //enf if(otherMvQty>0)
 		} //File end
 
-//		cout << i + 1 << "," << totalLoss << endl;
+		cout << i + 1 << "," << totalLoss << endl;
 
 		if(i==0){
 			minLossValue = totalLoss;
@@ -202,7 +200,6 @@ int main() {
 		auto wVec = neuNet.getWeightOneDim();
 		lm.SMD(wVec, lossGrad);
 		neuNet.setWeight(wVec);
-
 		/*
 		 * test
 		 */
@@ -218,7 +215,7 @@ int main() {
 				DOUT << "MvQty " << otherMvQty << endl;
 				++count;
 
-				int input[22]; //自分の手札 + 相手の手札
+				int input[28]; //自分の手札 + 相手の手札
 				bool isBest = true;
 
 				testFile.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
