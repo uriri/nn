@@ -14,7 +14,7 @@ using namespace Eigen;
 
 namespace Learn {
 
-LearningMethod::LearningMethod(const int weightSize, double learningRate) {
+LearningMethod::LearningMethod(const int weightSize, double learningRate, double meta, double lam) {
 
 	m_weightSize = weightSize;
 	pVec = VectorXd::Ones(m_weightSize);
@@ -22,8 +22,8 @@ LearningMethod::LearningMethod(const int weightSize, double learningRate) {
 
 	pVec *= learningRate;//学習率をベクトルに拡張
 
-	mu = 0.05; //meta-LearningRate
-	lamda = 0;
+	mu = meta; //meta-LearningRate
+	lamda = lam;
 }
 
 LearningMethod::~LearningMethod() {
@@ -35,7 +35,7 @@ void LearningMethod::SMD(std::vector<double>& oldWeight, const Eigen::VectorXd& 
 
 	auto oneHalfOver = [&](VectorXd arg){
 		for(int i=0; i<m_weightSize; ++i){
-			arg(i) = arg(i)<0.5?0.5:arg(i);
+			arg[i] = std::max(0.5, arg[i]);
 		}
 		return arg;
 	};
@@ -45,15 +45,14 @@ void LearningMethod::SMD(std::vector<double>& oldWeight, const Eigen::VectorXd& 
 //		cout << "  " << ol << endl;
 //	}
 
-	VectorXd nextWeight(m_weightSize);
-	nextWeight = STL2Vec(oldWeight);
 
 	//local learning rateの更新
 	VectorXd tmp = oneHalfOver( VectorXd::Ones(m_weightSize)+(mu*vVec.asDiagonal()*loss) );
 	pVec = pVec.asDiagonal()*tmp;
 
 	//weightの更新
-	nextWeight -= pVec.asDiagonal()*loss;
+	VectorXd nextWeight(m_weightSize);
+	nextWeight = STL2Vec(oldWeight) - pVec.asDiagonal()*loss;
 
 	//auxiliary vの更新
 	vVec = lamda*vVec + pVec.asDiagonal()*( loss-lamda*(loss*loss.transpose()*vVec) );

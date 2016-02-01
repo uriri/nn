@@ -22,12 +22,12 @@ Eigen::Matrix<typename Vector::value_type, Eigen::Dynamic, 1> STL2Vec(Vector& ve
 	return Eigen::Map<Eigen::Matrix<value_type, Eigen::Dynamic, 1> >(&vector[0], vector.size(), 1);
 }
 
-constexpr double  alpha = 5.0;//シグモイド関数のゲイン
+constexpr double  alpha = 1.0;//シグモイド関数のゲイン
 
 class LearningMethod {
 private:
 	std::ifstream m_ifs;
-	int m_weightSize;
+	unsigned int m_weightSize;
 
 	double mu; //metaLearningRate
 	double lamda;
@@ -36,18 +36,18 @@ private:
 	Eigen::VectorXd vVec;
 
 public:
-	LearningMethod(const int weightSize, double learningRate);
+	LearningMethod(const int weightSize, double learningRate, double meta, double lam);
 	virtual ~LearningMethod();
 
 	//損失関数、中身はシグモイド
 	double lossFunc(double arg){
-//		return ( 1.0/(1.0+exp(-alpha*arg)) );
-		return std::max(arg, 0.0);
+		return ( 1.0/(1.0+exp(-alpha*arg)) );
+//		return std::max(arg, 0.0);
 	}
 
 	double d_LossFunc(double arg){
-//		return ( alpha*lossFunc(arg)*(1.0-lossFunc(arg)) );
-		return arg>0.0?1.0:0.0;
+		return ( alpha*lossFunc(arg)*(1.0-lossFunc(arg)) );
+//		return arg>0.0?1.0:0.0;
 	}
 
 	double dd_LossFunc(double arg){
@@ -87,6 +87,14 @@ public:
 	//Stochastic Meta-Descentによる重み更新
 	void SMD(std::vector<double>& oldWeight, const Eigen::VectorXd& loss);
 	void SMD(Eigen::Vector3d& oldAns, const Eigen::Vector3d& gVec);
+
+	double getLearningRateNorm() const {
+		return pVec.norm();
+	}
+
+	Eigen::VectorXd getLearningRate() const {
+		return pVec;
+	}
 
 };
 
