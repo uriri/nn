@@ -17,10 +17,8 @@ namespace Learn {
 LearningMethod::LearningMethod(const int weightSize, double learningRate, double meta, double lam) {
 
 	m_weightSize = weightSize;
-	pVec = VectorXd::Ones(m_weightSize);
+	pVec = VectorXd::Constant(m_weightSize, learningRate);//学習率をベクトルに拡張
 	vVec = VectorXd::Zero(m_weightSize);
-
-	pVec *= learningRate;//学習率をベクトルに拡張
 
 	mu = meta; //meta-LearningRate
 	lamda = lam;
@@ -57,13 +55,11 @@ void LearningMethod::SMD(std::vector<double>& oldWeight, const Eigen::VectorXd& 
 	//auxiliary vの更新
 	vVec = lamda*vVec + pVec.asDiagonal()*( loss-lamda*(loss*loss.transpose()*vVec) );
 
-	if(nextWeight == STL2Vec(oldWeight)){
-		cout << "not update" << endl;
-	}
+//	if(nextWeight == STL2Vec(oldWeight)){
+//		cout << "not update" << endl;
+//	}
 
-	for(int i=0; i<m_weightSize; ++i){
-		oldWeight[i] = nextWeight[i];
-	}
+	Map<VectorXd>(&oldWeight[0], m_weightSize) = nextWeight;
 }
 
 //3次元用
@@ -77,19 +73,17 @@ void LearningMethod::SMD(Eigen::Vector3d& oldAns, const Eigen::Vector3d& gVec) {
 		return arg;
 	};
 
-	Vector3d nextAns = oldAns;
-
 	//local learning rateの更新
 	pVec = pVec.asDiagonal()*oneHalfOver( Vector3d::Ones()+(mu*vVec.asDiagonal()*gVec) );
 
 	//weightの更新
-	nextAns -= pVec.asDiagonal()*gVec;
+	Vector3d nextAns =oldAns - pVec.asDiagonal()*gVec;
 
 	//auxiliary vの更新
 	vVec = lamda*vVec + pVec.asDiagonal()*( gVec - lamda*(gVec*gVec.transpose()*vVec) );
 
 	oldAns = nextAns;
-}
+};
 
 template<int Size>
 void printArray(int (&arg)[Size]) {

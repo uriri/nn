@@ -9,6 +9,7 @@
 #include <sstream>
 #include <fstream>
 #include <chrono>
+#include <limits>
 
 #include "NeuralNetwork.h"
 #include "LearningMethod.h"
@@ -65,16 +66,25 @@ int main() {
 	constexpr int hideSize = 20;
 	constexpr int wSize = ((inSize + 1) * hideSize) + (hideSize + 1);
 
-	constexpr double learningRate = 0.5;
-	constexpr double mu = 0.99; //meta-LearningRate
-	constexpr double lamda = 0;
+	constexpr double lamda = 0.0;
 
-	constexpr int learningTimes = 100;
+	constexpr double learningRate = 0.1;
+	constexpr double mu = 0.05; //meta-LearningRate
+
+	constexpr int learningTimes = 5000;
+
+	//群平均の分母
+	constexpr int geneNum = 10;
+
+//	double learningRate;
+//	cin >> learningRate;
 
 	ifstream learnFile, testFile;
 
 	NeuralNetwork neuNet(inSize, hideSize);
 	LearningMethod lm(wSize, learningRate, mu, lamda);
+
+//	double lr = learningRate;
 
 #if 1
 
@@ -100,7 +110,7 @@ int main() {
 	ofstream plot;
 
 	string plotFile;
-	bool isSame = true;
+	bool isExist = true;
 	unsigned int num = 0;
 	do{
 		ostringstream os;
@@ -108,10 +118,10 @@ int main() {
 		ifstream check(os.str().c_str());
 		if(check.fail()){
 			plotFile = os.str();
-			isSame = false;
+			isExist = false;
 		}
 		++num;
-	}while(isSame);
+	}while(isExist);
 	cout << plotFile << endl;
 	plot.open(plotFile.c_str());
 
@@ -131,55 +141,83 @@ int main() {
 	chrono::system_clock::time_point start, end;
 	start = chrono::system_clock::now();
 
-	for (int i = 0; i < learningTimes; ++i) {
-		//ファイルの最後までループ
+	unsigned int notChangeCount = 0;
+	double beforeLoss = numeric_limits<double>::max();
+	double aveMatch = 0.0;
+
+	bool isEnd = false;
+
+	for (unsigned int itr = 1; itr <= learningTimes; ++itr) {
+
 		VectorXd lossGrad = VectorXd::Zero(wSize);
 		double lossValue;
 		double totalLoss = 0.0;
+
+		//ファイルの最後までループ
 		while (!learnFile.eof()) {
 			learnFile.read(reinterpret_cast<char*>(&otherMvQty), sizeof(otherMvQty));
-			if (otherMvQty > 0) {
-				DOUTL << "MvQty " << otherMvQty << endl;
+			DOUT << "MvQty " << otherMvQty << endl;
 
-				int input[28]; //自分の手札 + 相手の手札
-				vector<double> bestGrad(wSize), otherGrad(wSize); //NNの勾配
+			int input[28]; //自分の手札 + 相手の手札
+			vector<double> bestGrad(wSize), otherGrad(wSize); //NNの勾配
 
-				learnFile.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
-				learnFile.read(reinterpret_cast<char*>(bestHandRank), sizeof(bestHandRank));
+			learnFile.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
+			learnFile.read(reinterpret_cast<char*>(bestHandRank), sizeof(bestHandRank));
 
-				connectArray(input, myHandRank, bestHandRank);
-				DOUT << "input" << endl;
+			connectArray(input, myHandRank, bestHandRank);
+			DOUT << " +best " << endl;
+			printArray(input);
+
+			neuNet.calOutPut(input);
+			double bestValue = neuNet.getOutPut();
+			bestGrad = neuNet.getGrad();
+
+			DOUTL << "bestValue  " << bestValue << endl;
+
+			for (int j = 0; j < otherMvQty; ++j) {
+				learnFile.read(reinterpret_cast<char*>(otherHandRank), sizeof(otherHandRank));
+
+				connectArray(input, myHandRank, otherHandRank);
+				DOUT << " +other" << j << " " << endl;
 				printArray(input);
-
 				neuNet.calOutPut(input);
-				const double bestValue = neuNet.getOutPut();
-				bestGrad = neuNet.getGrad();
+				double otherValue = neuNet.getOutPut();
+				otherGrad = neuNet.getGrad();
 
-				DOUTL << "bestValue  " << bestValue << endl;
+				DOUTL << "otherValue " << otherValue << endl;
 
-				for (int j = 0; j < otherMvQty; ++j) {
-					learnFile.read(reinterpret_cast<char*>(otherHandRank), sizeof(otherHandRank));
-
-					connectArray(input, myHandRank, otherHandRank);
-					neuNet.calOutPut(input);
-					const double otherValue = neuNet.getOutPut();
-					otherGrad = neuNet.getGrad();
-
-					DOUTL << "otherValue " << otherValue << endl;
-
-					//勾配をここで求めて総和を計算
-					lossValue = otherValue - bestValue;
-					DOUTL << "loss       " << lm.lossFunc(lossValue) << "(" << lossValue << ") " << lm.d_LossFunc(lossValue) << endl;
-					totalLoss += lm.lossFunc(lossValue);
-					lossGrad += ( lm.d_LossFunc(lossValue)*(STL2Vec(otherGrad) - STL2Vec(bestGrad)) );
-				}
-				DOUTL << "totalLoss  " << totalLoss << endl;
-				DOUTL << endl;
-			} //enf if(otherMvQty>0)
+				//勾配をここで求めて総和を計算
+				lossValue = otherValue - bestValue;
+				DOUTL << "loss       " << lm.lossFunc(lossValue) << "(" << lossValue << ") " << lm.d_LossFunc(lossValue) << endl;
+				totalLoss += lm.lossFunc(lossValue);
+				lossGrad += ( lm.d_LossFunc(lossValue)*(STL2Vec(otherGrad) - STL2Vec(bestGrad)) );
+			}
+			DOUTL << "totalLoss  " << totalLoss << endl;
+			DOUTL << endl;
 		} //File end
 
-//		cout << i + 1 << "," << totalLoss << endl;
-		cout << lm.getLearningRate().transpose() << endl;
+		cout << itr << " : " << beforeLoss << "->" << totalLoss << " (" << totalLoss - beforeLoss << ")";
+//		cout << ", " << lr;
+		cout << endl;
+
+		if(fabs(beforeLoss - totalLoss) > 1e-15){
+			beforeLoss = totalLoss;
+			notChangeCount = 0;
+		} else {
+			++notChangeCount;
+			cout << "not change " << notChangeCount << endl;
+		}
+
+		if(notChangeCount >= 10){
+			cout << "stop learn" << endl;
+			break;
+		}
+
+		if( fabs(totalLoss) < 1e-15 ){
+			cout << "Optimized totalLoss" << endl;
+			minLossValue = totalLoss;
+			break;
+		}
 
 #if 0
 		if(i==0){
@@ -202,12 +240,22 @@ int main() {
 #endif
 
 		auto wVec = neuNet.getWeightOneDim();
+
 		lm.SMD(wVec, lossGrad);
 		neuNet.setWeight(wVec);
+//		cout << lm.getLearningRate().transpose() << endl;
+
+//		VectorXd next = STL2Vec(wVec) - lr*lossGrad;
+//		for(int i=0; i<wSize; ++i){
+//			wVec[i] = next[i];
+//		}
+//		neuNet.setWeight(wVec);
+//		lr *= mu;
 
 		/*
 		 * test
 		 */
+
 //		cout << "--- test ---" << endl;
 
 		int bestCount = 0;
@@ -216,47 +264,62 @@ int main() {
 		//ファイルの最後までループ
 		while (!testFile.eof()) {
 			testFile.read(reinterpret_cast<char*>(&otherMvQty), sizeof(otherMvQty));
-			if (otherMvQty > 0) {
-				DOUT << "MvQty " << otherMvQty << endl;
-				++count;
+			DOUTT << "MvQty " << otherMvQty << endl;
 
-				int input[28]; //自分の手札 + 相手の手札
-				bool isBest = true;
+			++count;
+			int input[28]; //自分の手札 + 相手の手札
+			bool isBest = true;
 
-				testFile.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
-				testFile.read(reinterpret_cast<char*>(bestHandRank), sizeof(bestHandRank));
+			testFile.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
+			testFile.read(reinterpret_cast<char*>(bestHandRank), sizeof(bestHandRank));
 
-				connectArray(input, myHandRank, bestHandRank);
+			connectArray(input, myHandRank, bestHandRank);
+			neuNet.calOutPut(input);
+			const double bestValue = neuNet.getOutPut();
+			DOUTT << "bestValue  " << bestValue << endl;
+
+			for (int j = 0; j < otherMvQty; ++j) {
+				testFile.read(reinterpret_cast<char*>(otherHandRank), sizeof(otherHandRank));
+
+				connectArray(input, myHandRank, otherHandRank);
 				neuNet.calOutPut(input);
-				const double bestValue = neuNet.getOutPut();
-				DOUTT << "bestValue  " << bestValue << endl;
-
-				for (int i = 0; i < otherMvQty; ++i) {
-					testFile.read(reinterpret_cast<char*>(otherHandRank), sizeof(otherHandRank));
-					connectArray(input, myHandRank, otherHandRank);
-
-					neuNet.calOutPut(input);
-					const double otherValue = neuNet.getOutPut();
-					double loss = otherValue-bestValue;
-					DOUTT << "otherValue " << otherValue << endl;
-					DOUTT << "loss       " << lm.lossFunc(loss) << endl;
-					if( loss < 1e-15 ){
-						DOUTT << "- ";
-						isBest = false;
-					}
+				const double otherValue = neuNet.getOutPut();
+				DOUTT << "otherValue " << otherValue << endl;
+				if( otherValue >= bestValue ){
+					//1つでもダメだったらbreakでやめる <- バカ
+					//for文全部まわんなくてファイル読み込みがずれる
+					isBest = false;
 				}
+			}
 
-				if (isBest) {
-					DOUT << "ok" << endl;
-					++bestCount;
-				}
-				DOUTT << endl;
-			} //enf if(otherMvQty>0)
+			if(isBest){
+				DOUTT << "ok" << endl;
+				++bestCount;
+			}
+			DOUTT << endl;
+
 		}//end testFile
 
-		const auto match = (static_cast<double>(bestCount) / static_cast<double>(count)) * 100;
 
-		plot << i+1 << "," << totalLoss << "," << match << "," << lm.getLearningRateNorm() << endl;
+		//汎化テストの一致率
+		double match = (static_cast<double>(bestCount) / static_cast<double>(count))*100;
+
+		plot << itr << "," << totalLoss << "," << match;
+
+		//群平均
+		aveMatch += match;
+
+		if(itr%geneNum != 0){
+			plot << ",=NA()";
+		} else {
+			plot << "," << aveMatch/geneNum;
+			aveMatch = 0.0;
+		}
+		plot  << "," << lm.getLearningRateNorm();
+		if(itr == 1){
+			plot << ",," << "rate|meta(" << learningRate << "|" << mu << ")," << neuNet.getSeed();
+		}
+		plot << endl;
 
 		testFile.clear();
 		testFile.seekg(0, ios::beg);
@@ -264,7 +327,7 @@ int main() {
 		learnFile.clear();
 		learnFile.seekg(0, ios::beg);
 
-		if(i==learningTimes-1)
+		if(itr==learningTimes)
 			minLossValue = totalLoss;
 
 	} //learning loop
@@ -275,7 +338,7 @@ int main() {
 
 	ofstream ofs(out.str(), ios::binary | ios::trunc);
 	ofs.write(reinterpret_cast<const char*>(&wSize), sizeof(wSize));
-	ofs.write(reinterpret_cast<char*>(&aftWeight[0]), wSize * sizeof(double));
+	ofs.write(reinterpret_cast<char*>(&aftWeight[0]), wSize*sizeof(double));
 	ofs.close();
 
 	learnFile.close();
@@ -294,11 +357,10 @@ int main() {
 
 #else
 
-
-	testFile.open(testFileName.c_str(), ios::binary);
+	testFile.open("learn_500.dat", ios::binary);
 
 	if (testFile.fail()) {
-		cerr << "cannot open" << endl;
+		cerr << "test cannot open" << endl;
 		return -1;
 	}
 
@@ -326,43 +388,40 @@ int main() {
 	//ファイルの最後までループ
 	while (!testFile.eof()) {
 		testFile.read(reinterpret_cast<char*>(&otherMvQty), sizeof(otherMvQty));
-		if (otherMvQty > 0) {
-			DOUT << "MvQty " << otherMvQty << endl;
+		DOUTT << "MvQty " << otherMvQty << endl;
 
-			int input[28]; //自分の手札 + 相手の手札
-			bool isBest = true;
+		++count;
+		int input[28]; //自分の手札 + 相手の手札
+		bool isBest = true;
 
-			testFile.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
-			testFile.read(reinterpret_cast<char*>(bestHandRank), sizeof(bestHandRank));
+		testFile.read(reinterpret_cast<char*>(myHandRank), sizeof(myHandRank));
+		testFile.read(reinterpret_cast<char*>(bestHandRank), sizeof(bestHandRank));
 
-			connectArray(input, myHandRank, bestHandRank);
+		connectArray(input, myHandRank, bestHandRank);
+		neuNet.calOutPut(input);
+		const double bestValue = neuNet.getOutPut();
+		DOUTT << "bestValue  " << bestValue << endl;
+
+		for (int j = 0; j < otherMvQty; ++j) {
+			testFile.read(reinterpret_cast<char*>(otherHandRank), sizeof(otherHandRank));
+
+			connectArray(input, myHandRank, otherHandRank);
 			neuNet.calOutPut(input);
-			const double bestValue = neuNet.getOutPut();
-			DOUTT << "bestValue  " << bestValue << endl;
-
-			for (int i = 0; i < otherMvQty; ++i) {
-				testFile.read(reinterpret_cast<char*>(otherHandRank), sizeof(otherHandRank));
-				connectArray(input, myHandRank, otherHandRank);
-				++count;
-
-				neuNet.calOutPut(input);
-				const double otherValue = neuNet.getOutPut();
-				if( (otherValue-bestValue) < 1e-15 ){
-					DOUTT << "- ";
-					isBest = false;
-					++bestCount;
-				}
-				DOUTT << "otherValue " << otherValue << endl;
-				DOUTT << "loss       " << lm.lossFunc(otherValue-bestValue) << endl;
+			const double otherValue = neuNet.getOutPut();
+			DOUTT << "otherValue " << otherValue << endl;
+			if( otherValue >= bestValue ){
+				//1つでもダメだったらbreakでやめる <- バカがやることなのでやめましょう
+				//readが呼ばれなくなります
+				isBest = false;
 			}
-			/*
-			if (isBest) {
-				DOUT << "ok" << endl;
-				++bestCount;
-			}
-			DOUTT << endl;
-			*/
-		} //enf if(otherMvQty>0)
+		}
+
+		if(isBest){
+			DOUTT << "ok" << endl;
+			++bestCount;
+		}
+		DOUTT << endl;
+
 	}//end testFile
 
 	cout << "best/count -> " << bestCount << "/" << count << endl;
@@ -418,8 +477,8 @@ int main() {
 	mt19937 mt(rnde());
 	uniform_real_distribution<> rnd(-10.0, 10.0);
 
-	Vector3d coordinate = {rnd(mt), rnd(mt), rnd(mt)};
-	Vector3d error = {1e-15, 1e-15, 1e-15};
+	Vector3d coordinate = Vector3d::Constant(rnd(mt));
+	Vector3d error = Vector3d::Constant(1e-15);
 	auto grad = [](Eigen::Vector3d arg) {
 		Eigen::Vector3d tmp;
 		for(int i=0; i<3; ++i) {
@@ -436,10 +495,10 @@ int main() {
 	auto check = [](Eigen::Vector3d& arg) {
 		bool tmp = true;
 		for(int i=0; i<3; ++i) {
-			if( (fabs(arg[i]) < 1e-15) )
-			arg[i] = 0.0;
+			if( (std::fabs(arg[i]) < 1e-15) )
+				arg[i] = 0.0;
 			else
-			tmp = false;
+				tmp = false;
 		}
 		return tmp;
 	};

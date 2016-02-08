@@ -27,7 +27,7 @@ private:
 	std::vector< std::vector<double> > m_weightVecI2H;	//重みベクトル（入力->中間）[hide][input]
 	std::vector<double> m_weightVecH2O;					//重みベクトル（中間->出力）
 	unsigned int m_weightSize;							//重みの数
-	std::random_device m_rndDevice;
+	int m_seed;
 
 	double sigmoid(double arg) {
 		return (1.0 / (1.0 + exp(-alpha * arg)));
@@ -72,7 +72,10 @@ public:
 	virtual ~NeuralNetwork() { }
 
 	void init() {
-		std::mt19937 mt(m_rndDevice());
+		std::random_device rnd;
+//		m_seed = rnd();
+		m_seed = 752659422;
+		std::mt19937 mt(m_seed);
 		std::uniform_real_distribution<> randWeight(-1.0, 1.0);
 
 		int t = 0;
@@ -173,6 +176,9 @@ public:
 		return gradVec;
 	}
 
+	int getSeed() const {
+		return m_seed;
+	}
 };
 
 } /* namespace NN */
