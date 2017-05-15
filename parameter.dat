@@ -1,0 +1,5 @@
+Dir RelativeStrong/data/
+#Dir Normal/data/
+FileRF log_RF_50.dat
+FileNF log_NF_50.dat
+iteration 1000
