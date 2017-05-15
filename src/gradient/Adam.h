@@ -12,15 +12,18 @@
 
 namespace Learn {
 
+namespace adam {
+constexpr double beta1 = 0.9;
+constexpr double beta2 = 0.999;
+constexpr double epsilon = 10e-8;
+constexpr double alpha = 0.001;
+}
+
 class Adam : public GradientDescent{
 private:
 	unsigned int vecSize;
 	Eigen::VectorXd mVec;
 	Eigen::VectorXd vVec;
-	double beta1;
-	double beta2;
-	double epsilon;
-	double alpha;
 	unsigned int epoch;
 public:
 	Adam(unsigned int size);

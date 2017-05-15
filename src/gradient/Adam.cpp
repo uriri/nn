@@ -13,14 +13,12 @@ using namespace Eigen;
 
 namespace Learn {
 
+using namespace adam;
+
 Adam::Adam(unsigned int size):
 		vecSize(size),
 		mVec(Eigen::VectorXd::Zero(size)),
 		vVec(Eigen::VectorXd::Zero(size)),
-		beta1(0.9),
-		beta2(0.999),
-		epsilon(10e-8),
-		alpha(0.001),
 		epoch(1){}
 
 Adam::~Adam() = default;

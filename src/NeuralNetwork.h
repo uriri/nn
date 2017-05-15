@@ -89,8 +89,8 @@ private:
 	Eigen::VectorXd m_hiddenLayer;	//中間層の出力,sigmoidは通していない
 	Eigen::VectorXd m_output;		//出力層の出力,sigmoidは通していない
 
-	Eigen::MatrixXd m_weightI2H;	//重み行列（入力->中間）
-	Eigen::MatrixXd m_weightH2O;	//重み行列（中間->出力）
+	Eigen::MatrixXd m_weightI2H;	//重み行列（入力, 中間）
+	Eigen::MatrixXd m_weightH2O;	//重み行列（中間, 出力）
 
 	std::unique_ptr<ActiveFunc> m_hideActFunc;			//中間層の活性化関数
 	std::unique_ptr<ActiveFunc> m_outActFunc;			//出力層の活性化関数
@@ -98,7 +98,7 @@ private:
 	//ニューラルネット出力計算
 	constexpr void calOutPut_imp(){
 		//入力->中間
-		m_hiddenLayer.head(hideSize) = m_input.transpose()*m_weightI2H;
+		m_hiddenLayer.tail(hideSize) = m_input.transpose()*m_weightI2H;
 
 		//中間->出力
 		m_output = m_hiddenLayer.unaryExpr(
@@ -108,19 +108,38 @@ private:
 		).transpose()*m_weightH2O;
 	};
 
+	double makeRandWeight(double unitMu, std::size_t in){
+		std::random_device d;
+		std::mt19937 mt(d());
+		std::normal_distribution<> dist(0.0, unitMu/std::sqrt(in));
+		return dist(mt);
+	}
+
+	void initWeight(double mu, Eigen::MatrixXd& mat){
+		const auto row = mat.rows();
+		const auto col = mat.cols();
+		for(auto i=0; i<row; ++i){
+			for(auto j=0; j<col; ++j){
+				mat(i, j) = makeRandWeight(mu, row);
+			}
+		}
+	}
+
 public:
 	constexpr NeuralNetwork():
 		m_weightSize( ((inSize+1)*hideSize)+((hideSize+1)*outSize) ),
 		m_input(Eigen::VectorXd::Zero(inSize+1)),
 		m_hiddenLayer(Eigen::VectorXd::Zero(hideSize+1)),
 		m_output(Eigen::VectorXd::Zero(outSize)),
-		m_weightI2H(Eigen::MatrixXd::Random(inSize+1, hideSize)),
-		m_weightH2O(Eigen::MatrixXd::Random(hideSize+1, outSize)),
+		m_weightI2H(Eigen::MatrixXd::Zero(inSize+1, hideSize)),
+		m_weightH2O(Eigen::MatrixXd::Zero(hideSize+1, outSize)),
 		m_hideActFunc(std::make_unique<ReLU>()),
 		m_outActFunc(std::make_unique<Sigmoid>())
 	{
 		m_input(0) = -1.0;
 		m_hiddenLayer(0) = -1.0;
+		initWeight(0.1, m_weightI2H);
+		initWeight(0.1, m_weightH2O);
 	}
 
 	constexpr NeuralNetwork(const std::string& fileI2H, const std::string& fileH2O):
@@ -128,8 +147,8 @@ public:
 		m_input(Eigen::VectorXd::Zero(inSize+1)),
 		m_hiddenLayer(Eigen::VectorXd::Zero(hideSize+1)),
 		m_output(Eigen::VectorXd::Zero(outSize)),
-		m_weightI2H(Eigen::MatrixXd::Random(inSize+1, hideSize)),
-		m_weightH2O(Eigen::MatrixXd::Random(hideSize+1, outSize)),
+		m_weightI2H(Eigen::MatrixXd::Zero(inSize+1, hideSize)),
+		m_weightH2O(Eigen::MatrixXd::Zero(hideSize+1, outSize)),
 		m_hideActFunc(std::make_unique<ReLU>()),
 		m_outActFunc(std::make_unique<Sigmoid>())
 	{
@@ -185,42 +204,59 @@ public:
 
 	//勾配の計算
 	void getGrad(Eigen::VectorXd& grad) const {
-		grad.resize(m_weightSize);
-		//入力->中間
-		grad.head(m_weightI2H.size()) = getGradI2H();
-		//中間->出力
-		grad.tail(m_weightH2O.size()) = getGradH2O();
-	}
-
-	//勾配の計算
-	//ほんとは行列計算的に求めたいけどとりあえず配列の時のやつそのままで
-	Eigen::VectorXd getGradI2H() const {
-		const int is = m_weightI2H.rows();
-		const int hs = m_weightI2H.cols();
-		const int os = m_output.size();
-		Eigen::VectorXd tmp = Eigen::VectorXd::Zero(m_weightI2H.size());
-		for (int i=0; i<hs; ++i) {
-			for (int j=0; j<is; ++j) {
-				tmp(i*is+j) = m_hideActFunc->d_val(m_hiddenLayer[i])*m_input[j];
-				for(int k=0; k<os; ++k){
-					tmp(i*is+j) *= m_outActFunc->d_val(m_output(k))*m_weightH2O(i, k);
-				}
-			}
-		}
-		return tmp;
-	}
-
-	//勾配の計算
-	Eigen::VectorXd getGradH2O() const {
 		auto o = [this](double x){ return m_outActFunc->d_val(x); };
-		auto h = [this](double x){ return m_hideActFunc->val(x); };
-		Eigen::MatrixXd tmp = m_output.unaryExpr(o)*(m_hiddenLayer.unaryExpr(h)).transpose();
-		return Eigen::Map<Eigen::VectorXd>(tmp.data(), m_weightH2O.size());
+		auto h = [this](double x){ return m_hideActFunc->d_val(x); };
+		grad.resize(m_weightSize);
+		Eigen::VectorXd delta_k = m_output.unaryExpr(o);
+		Eigen::VectorXd delta_j = (m_hiddenLayer.unaryExpr(h)).array()*
+				((delta_k.transpose()*m_weightH2O.transpose()).transpose()).array();
+
+		//入力->中間
+		Eigen::MatrixXd tmp = delta_j*m_input.transpose();
+		grad.head(m_weightI2H.size()) = Eigen::Map<Eigen::VectorXd>(tmp.data(), m_weightI2H.size());
+		//中間->出力
+		tmp = delta_k*m_hiddenLayer.transpose();
+		grad.tail(m_weightH2O.size()) = Eigen::Map<Eigen::VectorXd>(tmp.data(), m_weightH2O.size());
 	}
+
+//	//勾配の計算
+//	void getGrad(Eigen::VectorXd& grad) const {
+//		grad.resize(m_weightSize);
+//		//入力->中間
+//		grad.head(m_weightI2H.size()) = getGradI2H();
+//		//中間->出力
+//		grad.tail(m_weightH2O.size()) = getGradH2O();
+//	}
+//
+//	//勾配の計算
+//	//ほんとは行列計算的に求めたいけどとりあえず配列の時のやつそのままで
+//	Eigen::VectorXd getGradI2H() const {
+//		const int is = m_weightI2H.rows();
+//		const int hs = m_weightI2H.cols();
+//		const int os = m_output.size();
+//		Eigen::VectorXd tmp = Eigen::VectorXd::Zero(m_weightI2H.size());
+//		for (int i=0; i<hs; ++i) {
+//			for (int j=0; j<is; ++j) {
+//				tmp(i*is+j) = m_hideActFunc->d_val(m_hiddenLayer[i])*m_input[j];
+//				for(int k=0; k<os; ++k){
+//					tmp(i*is+j) *= m_outActFunc->d_val(m_output(k))*m_weightH2O(i, k);
+//				}
+//			}
+//		}
+//		return tmp;
+//	}
+//
+//	//勾配の計算
+//	Eigen::VectorXd getGradH2O() const {
+//		auto o = [this](double x){ return m_outActFunc->d_val(x); };
+//		auto h = [this](double x){ return m_hideActFunc->val(x); };
+//		Eigen::MatrixXd tmp = m_output.unaryExpr(o)*(m_hiddenLayer.unaryExpr(h)).transpose();
+//		return Eigen::Map<Eigen::VectorXd>(tmp.data(), m_weightH2O.size());
+//	}
 
 	//誤差逆伝播法による重みの修正
 	void backPropagation(const Eigen::VectorXd& teach, const double rate) {
-		Eigen::VectorXd delta_k = m_output - teach;
+		Eigen::VectorXd delta_k = m_output.unaryExpr(m_outActFunc->val) - teach;
 		Eigen::VectorXd delta_j = m_weightH2O.transpose() * delta_k;
 		auto f = [this](double x){ return m_hideActFunc->val(x); };
 
