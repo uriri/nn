@@ -51,10 +51,10 @@ constexpr std::size_t wSize = ((inSize + 1) * hideSize) + (hideSize + 1) * outSi
 //学習用データを4:1で学習、テストに分割
 constexpr double use4Learn = 4.0;
 constexpr double use4Test = 1.0;
-constexpr double division = use4Learn+use4Test;
+constexpr double DIV = use4Learn+use4Test;
 
 //loss function
-constexpr double  alpha = 5.0;//シグモイド関数のゲイン
+constexpr double  alpha = 1.0;//シグモイド関数のゲイン
 
 //損失関数、中身はシグモイド
 constexpr double lossFunc(const double arg){
@@ -71,7 +71,7 @@ void printArray(const T& arg) {
 	std::cout << std::endl;
 }
 
-std::string makeFileName(const std::string& s) {
+std::string _makeFileName(const std::string& s) {
 	unsigned int num = 0;
 	while (1) {
 		std::ostringstream os;
@@ -145,10 +145,10 @@ void readLogFile(const std::string& fileName, std::vector<Data_ptr>& readData){
 //2017/05/03 一つのログファイルを学習用とテスト用に分割する使用に変更
 void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learningTimes) {
 
-	NN::NeuralNetwork<inSize, hideSize, outSize> nn;
-
-//	printVar(wSize);
-
+	const unsigned int seed = [](){
+		std::random_device dev;
+		return dev();}();
+	NN::NeuralNetwork<inSize, hideSize, outSize> nn(seed);
 #ifdef USE_SMD
 	//SMD parameter
 	constexpr double lamda = 0.0;
@@ -181,7 +181,7 @@ void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learn
 		shuffleDataSet(dataSet);
 
 		//divide the data set for learning and testing
-		const auto size4Learn = (dataSet.size()/division)*use4Learn;
+		const auto size4Learn = (dataSet.size()/DIV)*use4Learn;
 
 		dataSet4Learn.insert(
 				std::end(dataSet4Learn),
@@ -198,9 +198,14 @@ void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learn
 
 #ifdef LOGPLOT
 	std::ofstream plot;
-	std::string plotFile = makeFileName((isNF?"NF":"RF"));
+	std::string plotFile = "plot_" + std::to_string(seed) + (isNF?"_NF":"_RF") + ".csv";
+//	std::string plotFile = makeFileName((isNF?"NF":"RF"));
 	std::cout << plotFile << std::endl;
 	plot.open(plotFile.c_str());
+#endif
+
+#ifdef DEBUG
+	std::ofstream debug("debug.txt");
 #endif
 
 	//for learning
@@ -208,16 +213,13 @@ void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learn
 	double beforeLoss = std::numeric_limits<double>::max();
 	double minLossValue = std::numeric_limits<double>::max();
 
-	//for plot
-	constexpr unsigned int geneNum = 10;	//群平均の分母
-	double aveMatch = 0.0;					//平均
-
 	//最良の重み
-	Eigen::MatrixXd bestI2H, bestH2O;
+	Eigen::MatrixXd bestI2H(Eigen::MatrixXd::Zero(inSize+1, hideSize));
+	Eigen::MatrixXd bestH2O(Eigen::MatrixXd::Zero(hideSize+1, outSize));
 
 	for (unsigned int itr=0; itr<learningTimes; ++itr) {
 
-		double totalLoss = 0.0;		//損失
+		double totalLossLearn = 0.0;		//損失
 		Eigen::VectorXd lossGrad = Eigen::VectorXd::Zero(wSize);	//損失勾配
 
 		//イテレーションごとにデータセットをシャッフル
@@ -232,9 +234,11 @@ void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learn
 			nn.getGrad(bestGrad);
 
 #ifdef DEBUG
-			std::cout << "bestHand" << std::endl;
-			printArray(best);
-			std::cout << "bestValue  " << bestValue << std::endl;
+//			debug << "bestHand" << std::endl;
+//			for(const auto& a : best)
+//				debug << a << " ";
+//			debug << std::endl;
+			debug << "bestValue  " << bestValue << std::endl;
 #endif
 
 			const auto& others = data->otherHandRank;
@@ -247,28 +251,30 @@ void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learn
 
 				//勾配をここで求めて総和を計算
 				const double lossValue = otherValue - bestValue;
-				totalLoss += lossFunc(lossValue);
+				totalLossLearn += lossFunc(lossValue);
 				lossGrad += ( d_LossFunc(lossValue) * (otherGrad - bestGrad) );
 
 #ifdef DEBUG
-				std::cout << "otherHand" << std::endl;
-				printArray(other);
-				std::cout << "otherValue " << otherValue << std::endl;
-				std::cout << "loss       " << lossFunc(lossValue) << "(" << lossValue << ") "
-						<< d_LossFunc(lossValue) << std::endl;
+//				debug << "otherHand" << std::endl;
+//				for(const auto& a : other)
+//					debug << a << " ";
+//				debug << std::endl;
+				debug << "otherValue " << otherValue << std::endl;
+				debug << "loss       " << lossFunc(lossValue) << "(" << lossValue << ") " << std::endl;
 #endif
 
 			}//other hand end
 		}//end learn data set
 
-		std::cout << itr << " : " << beforeLoss << "->" << totalLoss << " (" << totalLoss - beforeLoss << ")" << std::endl;
+		std::cout << itr << " : " << beforeLoss << "->" << totalLossLearn << " (" << totalLossLearn - beforeLoss << ")" << std::endl;
 
-		if (std::fabs(totalLoss - beforeLoss) > 1e-15) {
-			beforeLoss = totalLoss;
-			notChangeCount = 0;
-		} else {
+		if (std::fabs(totalLossLearn - beforeLoss) < 1e-15) {
+			//損失が減少していない
 			++notChangeCount;
 			std::cout << "not change " << notChangeCount << std::endl;
+		} else {
+			beforeLoss = totalLossLearn;
+			notChangeCount = 0;
 		}
 
 		//終了条件
@@ -276,38 +282,29 @@ void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learn
 			std::cout << "stop learn" << std::endl;
 			break;
 		}
-		if (std::fabs(totalLoss) < 1e-15) {
+		if (std::fabs(totalLossLearn) < 1e-15) {
 			std::cout << "Optimized totalLoss" << std::endl;
-			minLossValue = totalLoss;
+			minLossValue = totalLossLearn;
 			bestI2H = nn.getWeightI2H_Mat();
 			bestH2O = nn.getWeightI2H_Mat();
 			break;
 		}
 
 		//最良値の更新
-		if (totalLoss < minLossValue) {
-			minLossValue = totalLoss;
+		if (totalLossLearn < minLossValue) {
+			minLossValue = totalLossLearn;
 			bestI2H = nn.getWeightI2H_Mat();
 			bestH2O = nn.getWeightI2H_Mat();
 		}
-
-		//勾配法による学習
-		Eigen::VectorXd wVec;
-		nn.getWeightOneDim(wVec);
-		method->execute(wVec, lossGrad);
-		nn.setWeight(wVec);
 
 		/*******
 		 * test
 		 *******/
 
-		unsigned int bestCount = 0;
-		const unsigned int count = dataSet4Test.size();
+		double totalLossTest = 0.0;		//損失
 
 		//テスト用データセット
 		for(const auto& data : dataSet4Test){
-			bool isBest = true;
-
 			const auto& best = data->bestHandRank;
 			nn.setInput(best);
 			const double bestValue = nn.getOutPut();
@@ -316,33 +313,20 @@ void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learn
 			for (const auto& other : others) {
 				nn.setInput(other);
 				const double otherValue = nn.getOutPut();
-				if (otherValue < bestValue) {
-					//事前に読み込むようにしたのでbreakしても大丈夫
-					isBest = false;
-					break;
-				}
-			}
-			if (isBest) {
-				++bestCount;
+
+				const double lossValue = otherValue - bestValue;
+				totalLossTest += lossFunc(lossValue);
 			}
 		}//test File end
 
-		//汎化テストの一致率
-		const double match = (static_cast<double>(bestCount)/count) * 100;
-		std::cout << "     " << bestCount << "/" << count << " " << match << "%" << std::endl;
+		//勾配法による学習
+		Eigen::VectorXd wVec;
+		nn.getWeightOneDim(wVec);
+		method->execute(wVec, lossGrad);
+		nn.setWeight(wVec);
 
 #ifdef  LOGPLOT
-		plot << itr << "," << totalLoss << "," << match;
-
-		//群平均
-		aveMatch += match;
-
-		if((itr+1)%geneNum != 0) {
-			plot << ",=NA()";
-		} else {
-			plot << "," << aveMatch/geneNum;
-			aveMatch = 0.0;
-		}
+		plot << itr << "," << totalLossLearn << "," << totalLossTest;
 #ifdef USE_SMD
 		plot << "," << method.getLearningRateNorm();
 		if(itr == 1) {
@@ -361,6 +345,7 @@ void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learn
 #else
 	out << "Normal/weight/" << (isNF?"NF_":"RF_") << hideSize << "_" << minLossValue;
 #endif
+
 	Eigen::writeBinary(out.str()+"_I2H_" + std::to_string(minLossValue) + ".dat", bestI2H);
 	Eigen::writeBinary(out.str()+"_H2O_" + std::to_string(minLossValue) + ".dat", bestH2O);
 }
