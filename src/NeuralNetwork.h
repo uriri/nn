@@ -94,6 +94,8 @@ private:
 	std::unique_ptr<ActiveFunc> m_hideActFunc;			//中間層の活性化関数
 	std::unique_ptr<ActiveFunc> m_outActFunc;			//出力層の活性化関数
 
+	std::mt19937 m_rand;				//乱数生成器
+
 	//ニューラルネット出力計算
 	constexpr void calOutPut_imp(){
 		//入力->中間
@@ -107,18 +109,17 @@ private:
 		).transpose()*m_weightH2O;
 	};
 
-	double makeRandWeight(std::size_t in, unsigned int seed){
-		std::mt19937 mt(seed);
+	double makeRandWeight(std::size_t in){
 		std::normal_distribution<> dist(0.0, 1.0/std::sqrt(in));
-		return dist(mt);
+		return dist(m_rand);
 	}
 
-	void initWeight(Eigen::MatrixXd& mat, unsigned int seed){
+	void initWeight(Eigen::MatrixXd& mat){
 		const auto row = mat.rows();
 		const auto col = mat.cols();
 		for(auto i=0; i<row; ++i){
 			for(auto j=0; j<col; ++j){
-				mat(i, j) = makeRandWeight(row, seed);
+				mat(i, j) = makeRandWeight(row);
 			}
 		}
 	}
@@ -132,12 +133,13 @@ public:
 		m_weightI2H(Eigen::MatrixXd::Zero(inSize+1, hideSize)),
 		m_weightH2O(Eigen::MatrixXd::Zero(hideSize+1, outSize)),
 		m_hideActFunc(std::make_unique<ReLU>()),
-		m_outActFunc(std::make_unique<Sigmoid>())
+		m_outActFunc(std::make_unique<Sigmoid>()),
+		m_rand(seed)
 	{
 		m_input(0) = -1.0;
 		m_hiddenLayer(0) = -1.0;
-		initWeight(m_weightI2H, seed);
-		initWeight(m_weightH2O, seed);
+		initWeight(m_weightI2H);
+		initWeight(m_weightH2O);
 	}
 
 	constexpr NeuralNetwork(const std::string& fileI2H, const std::string& fileH2O):
@@ -148,7 +150,8 @@ public:
 		m_weightI2H(Eigen::MatrixXd::Zero(inSize+1, hideSize)),
 		m_weightH2O(Eigen::MatrixXd::Zero(hideSize+1, outSize)),
 		m_hideActFunc(std::make_unique<ReLU>()),
-		m_outActFunc(std::make_unique<Sigmoid>())
+		m_outActFunc(std::make_unique<Sigmoid>()),
+		m_rand(0)
 	{
 		m_input(0) = -1.0;
 		m_hiddenLayer(0) = -1.0;

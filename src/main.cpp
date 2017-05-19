@@ -16,6 +16,7 @@
 #include <array>
 #include <random>
 #include <cmath>
+#include <iomanip>
 
 #include "NeuralNetwork.h"
 #include "arrayFunc.h"
@@ -71,7 +72,7 @@ void printArray(const T& arg) {
 	std::cout << std::endl;
 }
 
-std::string _makeFileName(const std::string& s) {
+std::string makeFileName(const std::string& s) {
 	unsigned int num = 0;
 	while (1) {
 		std::ostringstream os;
@@ -82,6 +83,23 @@ std::string _makeFileName(const std::string& s) {
 		}
 		++num;
 	}
+}
+
+std::string getDate(){
+	time_t t = time(nullptr);
+	const tm* lt = localtime(&t);
+
+	std::stringstream ss;
+	ss << "20" << lt->tm_year-100;
+	ss << "/";
+	ss << lt->tm_mon+1;
+	ss << "/";
+	ss << lt->tm_mday;
+	ss << " ";
+	ss << lt->tm_hour;
+	ss << ":";
+	ss << lt->tm_min;
+	return ss.str();
 }
 
 //ミニバッチ用訓練データ
@@ -145,9 +163,7 @@ void readLogFile(const std::string& fileName, std::vector<Data_ptr>& readData){
 //2017/05/03 一つのログファイルを学習用とテスト用に分割する使用に変更
 void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learningTimes) {
 
-	const unsigned int seed = [](){
-		std::random_device dev;
-		return dev();}();
+	const unsigned int seed = std::random_device()();
 	NN::NeuralNetwork<inSize, hideSize, outSize> nn(seed);
 #ifdef USE_SMD
 	//SMD parameter
@@ -198,10 +214,14 @@ void learnWithBonanza(const std::string& fileName, bool isNF, unsigned int learn
 
 #ifdef LOGPLOT
 	std::ofstream plot;
-	std::string plotFile = "plot_" + std::to_string(seed) + (isNF?"_NF":"_RF") + ".csv";
-//	std::string plotFile = makeFileName((isNF?"NF":"RF"));
+	std::string plotFile = makeFileName((isNF?"NF":"RF"));
 	std::cout << plotFile << std::endl;
 	plot.open(plotFile.c_str());
+
+	//シード値をファイルに書き出す
+	std::ofstream seedOut("plot_seed.txt", std::ios::app);
+	seedOut << getDate() << " " << plotFile << " " << std::to_string(seed) << std::endl;
+	seedOut.close();
 #endif
 
 #ifdef DEBUG
